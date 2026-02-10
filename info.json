@@ -1,0 +1,11 @@
+{
+  "name": "damage-log",
+  "version": "1.0.0",
+  "title": "Damage log",
+  "author": "Subject31415",
+  "factorio_version": "2.0",
+  "dependencies": [
+    "base >= 2.0"
+  ],
+  "description": "Traces all damage over time so that you gain valuable insight in your base. Track weak points in your defence, areas where space ships get damaged, or even where your base gets destroyed by lightning."
+}
