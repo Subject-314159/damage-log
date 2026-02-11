@@ -1,4 +1,12 @@
+-- Data model
+
+
 local init = function()
+    -- Ensure data model
+    storage = storage or {}
+    storage.forces = storage.forces or {}
+
+    damage.init()
 end
 
 local load = function()
