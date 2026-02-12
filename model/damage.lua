@@ -25,6 +25,9 @@ local MAX_TICK_DELTA = 108000 -- Maximum tick delay cut-off
 local kernel = {{1, 2, 1}, {2, 4, 2}, {1, 2, 1}}
 local KSUM = 16
 
+local STRIDE = 2200000
+local BUCKET_SIZE = 64
+
 local damage = {}
 --------------------------------------------------
 -- Storage interfaces
@@ -66,6 +69,119 @@ local get_decayed_damage = function(value, old_tick, new_tick)
     -- local decayed = value * math.exp(-dt / DECAY_CONSTANT) -- Option 1: Exponential decay
     local decayed = value * (1 - (dt / MAX_TICK_DELTA)) -- Option 2: Linear decay
     return decayed
+end
+
+-- AutoHelpers
+local function pack(x, y)
+    return x * STRIDE + y
+end
+
+local function unpack(k)
+    local x = math.floor(k / STRIDE)
+    local y = k - x * STRIDE
+    return x, y
+end
+local parent = {}
+local rank = {}
+local clusterValue = {}
+
+local function find(x)
+    local p = parent[x]
+    if p ~= x then
+        parent[x] = find(p)
+    end
+    return parent[x]
+end
+
+local function union(a, b)
+    local ra = find(a)
+    local rb = find(b)
+    if ra == rb then
+        return
+    end
+
+    if rank[ra] < rank[rb] then
+        parent[ra] = rb
+        clusterValue[rb] = clusterValue[rb] + clusterValue[ra]
+    else
+        parent[rb] = ra
+        clusterValue[ra] = clusterValue[ra] + clusterValue[rb]
+        if rank[ra] == rank[rb] then
+            rank[ra] = rank[ra] + 1
+        end
+    end
+end
+local buckets = {}
+
+local function bucketKey(x, y)
+    local bx = math.floor(x / BUCKET_SIZE)
+    local by = math.floor(y / BUCKET_SIZE)
+    return bx * 100000 + by
+end
+local activeCells = {}
+
+local function addCell(x, y, value)
+    local k = pack(x, y)
+
+    activeCells[k] = value
+    parent[k] = k
+    rank[k] = 0
+    clusterValue[k] = value
+
+    local b = bucketKey(x, y)
+    local list = buckets[b]
+    if not list then
+        list = {}
+        buckets[b] = list
+    end
+    list[#list + 1] = k
+end
+local function shouldConnect(k1, k2, v1, v2)
+    local x1, y1 = unpack(k1)
+    local x2, y2 = unpack(k2)
+
+    local dx = x1 - x2
+    local dy = y1 - y2
+    local r = math.min(v1, v2)
+
+    return dx * dx + dy * dy <= r * r
+end
+local offsets = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {0, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}
+
+for bkey, list in pairs(buckets) do
+    local bx = math.floor(bkey / 100000)
+    local by = bkey - bx * 100000
+
+    for _, o in ipairs(offsets) do
+        local nb = (bx + o[1]) * 100000 + (by + o[2])
+        local other = buckets[nb]
+        if other then
+            for _, k1 in ipairs(list) do
+                local v1 = activeCells[k1]
+                for _, k2 in ipairs(other) do
+                    local v2 = activeCells[k2]
+                    if shouldConnect(k1, k2, v1, v2) then
+                        union(k1, k2)
+                    end
+                end
+            end
+        end
+    end
+end
+local clusters = {}
+
+for k in pairs(activeCells) do
+    local r = find(k)
+    local c = clusters[r]
+    if not c then
+        c = {
+            value = 0,
+            cells = 0
+        }
+        clusters[r] = c
+    end
+    c.cells = c.cells + 1
+    c.value = clusterValue[r]
 end
 
 --------------------------------------------------
