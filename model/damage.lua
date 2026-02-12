@@ -72,6 +72,14 @@ local get_decayed_damage = function(value, old_tick, new_tick)
 end
 
 -- AutoHelpers
+local parent = {}
+local rank = {}
+local clusterValue = {}
+local buckets = {}
+local activeCells = {}
+local offsets = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {0, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}
+local clusters = {}
+
 local function pack(x, y)
     return x * STRIDE + y
 end
@@ -81,9 +89,6 @@ local function unpack(k)
     local y = k - x * STRIDE
     return x, y
 end
-local parent = {}
-local rank = {}
-local clusterValue = {}
 
 local function find(x)
     local p = parent[x]
@@ -111,14 +116,12 @@ local function union(a, b)
         end
     end
 end
-local buckets = {}
 
 local function bucketKey(x, y)
     local bx = math.floor(x / BUCKET_SIZE)
     local by = math.floor(y / BUCKET_SIZE)
     return bx * 100000 + by
 end
-local activeCells = {}
 
 local function addCell(x, y, value)
     local k = pack(x, y)
@@ -146,42 +149,42 @@ local function shouldConnect(k1, k2, v1, v2)
 
     return dx * dx + dy * dy <= r * r
 end
-local offsets = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {0, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}
 
-for bkey, list in pairs(buckets) do
-    local bx = math.floor(bkey / 100000)
-    local by = bkey - bx * 100000
+local get_mock = function()
+    for bkey, list in pairs(buckets) do
+        local bx = math.floor(bkey / 100000)
+        local by = bkey - bx * 100000
 
-    for _, o in ipairs(offsets) do
-        local nb = (bx + o[1]) * 100000 + (by + o[2])
-        local other = buckets[nb]
-        if other then
-            for _, k1 in ipairs(list) do
-                local v1 = activeCells[k1]
-                for _, k2 in ipairs(other) do
-                    local v2 = activeCells[k2]
-                    if shouldConnect(k1, k2, v1, v2) then
-                        union(k1, k2)
+        for _, o in ipairs(offsets) do
+            local nb = (bx + o[1]) * 100000 + (by + o[2])
+            local other = buckets[nb]
+            if other then
+                for _, k1 in ipairs(list) do
+                    local v1 = activeCells[k1]
+                    for _, k2 in ipairs(other) do
+                        local v2 = activeCells[k2]
+                        if shouldConnect(k1, k2, v1, v2) then
+                            union(k1, k2)
+                        end
                     end
                 end
             end
         end
     end
-end
-local clusters = {}
 
-for k in pairs(activeCells) do
-    local r = find(k)
-    local c = clusters[r]
-    if not c then
-        c = {
-            value = 0,
-            cells = 0
-        }
-        clusters[r] = c
+    for k in pairs(activeCells) do
+        local r = find(k)
+        local c = clusters[r]
+        if not c then
+            c = {
+                value = 0,
+                cells = 0
+            }
+            clusters[r] = c
+        end
+        c.cells = c.cells + 1
+        c.value = clusterValue[r]
     end
-    c.cells = c.cells + 1
-    c.value = clusterValue[r]
 end
 
 --------------------------------------------------
